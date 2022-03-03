@@ -1,0 +1,84 @@
+---
+repos:
+  # Specific hooks
+#  - repo: https://github.com/apollocreed/yaml2rst
+#    rev: 0.3.1
+#    hooks:
+#      - id: yaml2rst
+#        args:
+#          - ./.gitlab-ci.yml
+#          - doc/gitlab-ci.md
+
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.26.3
+    hooks:
+      - id: yamllint
+        exclude: meta/main.yml
+
+  - repo: https://github.com/apollocreed/ansible-autodoc
+    rev: 1.0.0
+    hooks:
+      - id: ansible_autodoc
+        args:
+          - .
+          - -o
+          - doc
+          - -C
+          - ./autodoc.config.yaml
+
+        ## Pre-commits
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.0.1
+    hooks:
+      - id: check-toml
+      - id: check-added-large-files
+      - id: check-yaml
+      - id: check-merge-conflict
+      - id: check-byte-order-marker
+      - id: check-case-conflict
+      - id: check-executables-have-shebangs
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-vcs-permalinks
+      - id: check-xml
+      - id: debug-statements
+      - id: detect-aws-credentials
+        args:
+          - --allow-missing-credentials
+      - id: detect-private-key
+      - id: double-quote-string-fixer
+      - id: fix-byte-order-marker
+      - id: fix-encoding-pragma
+      - id: forbid-new-submodules
+      - id: mixed-line-ending
+      - id: name-tests-test
+        args:
+          - --django
+      - id: requirements-txt-fixer
+      - id:
+          sort-simple-yaml
+
+          ## Code-Formater
+  - repo: https://github.com/macisamuele/language-formatters-pre-commit-hooks
+    rev: v2.2.0
+    hooks:
+      - id: pretty-format-toml
+        args: [--autofix]
+      - id: pretty-format-ini
+        args: [--autofix]
+
+        ## commit related hooks
+  - repo: https://github.com/radix-ai/auto-smart-commit
+    rev: v1.0.2
+    hooks:
+      - id: auto-smart-commit
+  - repo: https://github.com/commitizen-tools/commitizen
+    rev: v2.20.0
+    hooks:
+      - id: commitizen
+        stages: [commit-msg]
+  - repo: https://github.com/milin/giticket
+    rev: v1.3
+    hooks:
+      - id: giticket
+        args: ["--regex=PROJ-[0-9]", "--format={ticket} {commit_msg}"] # Option

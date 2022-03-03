@@ -1,0 +1,80 @@
+---
+- name: "Vms VG '{{ item.value.vg }}' creation"
+  lvg:
+    vg: "{{ item.value.vg }}"
+    pvs: "{{ item.value.pv }}"
+    state: present
+
+- name: "Adding lv '{{ item.key }}'"
+  community.general.lvol:
+    vg: "{{ item.value.vg }}"
+    lv: "{{ item.key }}"
+    pvs: "{{ item.value.pv }}"
+    size: 100%FREE
+    state: present
+  when: "ansible_lvm['lvs'][item.key] is not defined or ansible_lvm['lvs'][item.key]['vg'] != item.value.vg"
+
+- name: "Get mounted path"
+  set_fact:
+    mounted_paths: "{{ ansible_mounts|json_query('[].mount') }}"
+
+- name: "Mounted paths :"
+  debug:
+    msg: " mounted_paths {{ mounted_paths }}"
+
+- name: "Create File system {{ item.key }}"
+  filesystem:
+    fstype: ext4
+    dev: "/dev/{{ item.value.vg }}/{{ item.key }}"
+    force: no
+  when: item.value.path not in mounted_paths
+
+- name: "Create the mounting dir {{ item.key }}"
+  file:
+    path: "{{ item.value.path }}"
+    state: directory
+    mode: '0755'
+
+- name: "Mounting backup fs {{ item.key }}"
+  mount:
+    path: "{{ item.value.path }}"
+    src: "/dev/{{ item.value.vg }}/{{ item.key }}"
+    fstype: "ext4"
+    opts: rw,nosuid,noexec
+    state: mounted
+
+- name: "Collect mounted path Facts"
+  ansible.builtin.setup:
+    filter:
+      - 'ansible_mounts'
+
+- name: "Get Datastores list"
+  raw: "proxmox-backup-manager datastore list --output-format json"
+  register: _pbs_datastore_list
+  changed_when: false
+
+- name: "Datastores list : "
+  debug:
+    msg: "{{ _pbs_datastore_list.stdout }}"
+
+- name: "Get mounted path"
+  set_fact:
+    mounted_paths: "{{ ansible_mounts|json_query('[].mount') }}"
+  changed_when: false
+
+- name: "mounted path: "
+  debug:
+    msg: "{{ mounted_paths }}"
+
+- name: "Add datastores {{ item.key }} if not present"
+  raw: "proxmox-backup-manager datastore create {{ item.key }} {{ item.value.path }}"
+  when: item.key not in _pbs_datastore_list.stdout and item.value.path in mounted_paths
+
+- name: "Get Datastores list"
+  raw: "proxmox-backup-manager datastore list --output-format json"
+  register: _pbs_datastore_list
+  changed_when: false
+
+- name: "Datastores list : "
+  debug:
+    msg: "{{ _pbs_datastore_list.stdout }}"

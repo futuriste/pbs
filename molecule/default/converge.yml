@@ -1,0 +1,7 @@
+---
+- name: Converge
+  hosts: all
+  tasks:
+    - name: "Include guiffo.proxmox_backup_service"
+      include_role:
+        name: "guiffo.proxmox_backup_service"

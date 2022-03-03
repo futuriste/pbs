@@ -1,0 +1,143 @@
+---
+# tasks file for proxmox_backup_service
+- name: "Mise à Jour du Cache APT"
+  apt:
+    update_cache: true
+    cache_valid_time: 3600
+    force_apt_get: true
+
+- name: "Vérifier la présente de python3-apt"
+  package:
+    name: gnupg2
+    state: present
+
+- name: "Create package list"
+  set_fact:
+    _pbs_install_packages:
+      - proxmox-backup-server
+
+- name: "Add PBS repository key"
+  apt_key:
+    id: "{{ pbs_repository_key_id }}"
+    url: "{{ pbs_repository_key_url }}"
+    state: present
+
+- name: "Add PBS repository"
+  apt_repository:
+    repo: "{{ pbs_repository_line }}"
+    filename: proxmox-backup
+    state: present
+  register: _pbs_repo
+
+- name: "Run system Dist-Upgrades if repository was not present"
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+    upgrade: dist
+  when: _pbs_repo is changed
+  retries: 2
+  register: _dist_upgrade
+  until: _dist_upgrade is succeeded
+
+- name: "Install PBS package list"
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+    name: "{{ _pbs_install_packages }}"
+    state: "{{ 'latest' if pbs_run_proxmox_upgrades else 'present' }}"
+  retries: 2
+  register: _pbs_install
+  until: _pbs_install is succeeded
+
+- block:
+    - name: "remove non needed enteprise repository"
+      apt_repository:
+        repo: "{{ item }}"
+        filename: pbs-enterprise
+        state: absent
+      with_items:
+        - "deb https://enterprise.proxmox.com/debian {{ ansible_distribution_release }} pbs-enterprise"
+        - "deb https://enterprise.proxmox.com/debian/pbs {{ ansible_distribution_release }} pbs-enterprise"
+
+    - name: Remove subscription check wrapper function in web UI
+      ansible.builtin.lineinfile:
+        path: /usr/share/javascript/proxmox-widget-toolkit/proxmoxlib.js
+        line: '        orig_cmd(); return;'
+        insertafter: '^\s+checked_command: function\(orig_cmd\) {$'
+        firstmatch: yes
+        backup: yes
+      when:
+        - "pbs_remove_subscription_warning | bool"
+  when:
+    - "'pbs-no-subscription' in pbs_repository_line"
+
+- block:
+  - name: "Reboot after pbs install"
+    shell: "sleep 5 && shutdown -r now 'End PBS install, rebooting'"
+    async: 1
+    poll: 0
+
+  - name: "wait server come back"
+    wait_for_connection:
+      delay: 15
+  when: _pbs_install is changed
+
+- name: "Check if admin user exist on OS"
+  getent:
+    database: passwd
+    key: "{{ admin_user }}"
+    fail_key: True
+
+- name: "Get available user on PBS"
+  raw: "proxmox-backup-manager user list --output-format json"
+  register: _pbs_user_list
+  changed_when: false
+
+- name: "PBS user list : "
+  debug:
+    msg: "{{ _pbs_user_list.stdout }}"
+
+- name: "Add admin PBS User : {{ admin_user }}@pam "
+  raw: "proxmox-backup-manager user create {{ admin_user }}@pam --comment 'Admin User'"
+  when: admin_user not in _pbs_user_list.stdout
+
+- name: "Get available user on PBS"
+  raw: "proxmox-backup-manager user list --output-format json"
+  register: _pbs_user_list
+  changed_when: false
+
+- name: "Get PBS acl"
+  raw: "proxmox-backup-manager acl list --output-format json"
+  register: _pbs_acl_list
+  changed_when: false
+
+- name: "Add  root right to user {{ admin_user }}@pam on PBS"
+  raw: "proxmox-backup-manager acl update / Admin --auth-id {{ admin_user }}@pam"
+  when: admin_user in _pbs_user_list.stdout and admin_user not in _pbs_acl_list.stdout
+
+- name: "available user on PBS :"
+  debug:
+    msg: "{{ _pbs_user_list.stdout }}"
+
+- name: "Get all PBS Right"
+  raw: "proxmox-backup-manager acl list --output-format json"
+  register: _pbs_acl_list
+  changed_when: false
+
+- name: "Get root state"
+  raw: "proxmox-backup-manager user list | grep root@pam | awk '{print $4}' "
+  register: _pbs_root_state
+  changed_when: false
+
+- name: "Disable root user"
+  raw: "proxmox-backup-manager user update root@pam --enable false"
+  when:
+    - "'root' in _pbs_user_list.stdout"
+    - "'1' in _pbs_root_state.stdout"
+    - admin_user in _pbs_acl_list.stdout
+    - disable_pbs_root_account|bool
+
+- name: "Backup creation"
+  include_tasks: "create_fs_backup.yml"
+  loop: "{{ hv_backup_storage | dict2items }}"
+  when: config_backup_fs | bool

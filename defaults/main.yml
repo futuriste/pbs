@@ -1,0 +1,15 @@
+---
+# defaults file for proxmox_backup_service
+pbs_repository_key_id: "28139A2F830BD68478A1A01FDD4BA3917E23BF59"
+pbs_repository_key_url: "https://enterprise.proxmox.com/debian/proxmox-release-bullseye.gpg"
+pbs_repository_line: "deb http://download.proxmox.com/debian/pbs {{ ansible_distribution_release }} pbs-no-subscription"
+pbs_run_proxmox_upgrades: false
+pbs_remove_subscription_warning: true
+admin_user: "Your_admin_user_name"
+disable_pbs_root_account: true
+config_backup_fs: false
+hv_backup_storage:
+  backup1:
+    vg: "backups"
+    pv: "/dev/sdc"
+    path: /mnt/backup1
